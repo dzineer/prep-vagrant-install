@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+
+exec 3>&1 4>&2
+trap 'exec 2>&4 1>&3' 0 1 2 3
+exec 1>comands-log.out 2>&1
+
+export COMMAND_LOG="/scripts/commands.log"
+export COMMAND_AND_OUTPUT_LOG="/scripts/commands-with-output.log"
+export ENV_LOG="/scripts/env.log"
+
+fuction cleanLogs {
+  sudo rm -rf  $COMAMND_LOG
+  sudo rm -rf $COMMAND_AND_OUTPUT_LOG
+  sudo rm -rf $ENV_LOG
+}
+
+function runLog {
+  cmd="$*"
+  sudo echo $cmd >> $COMMAND_LOG
+  sudo echo $cmd
+  sudo echo $cmd >> $COMMAND_AND_OUTPUT_LOG
+  sudo exec $cmd >> $COMMAND_AND_OUTPUT_LOG
+}
+
+function envLog {
+   theenv="$*"
+   sudo echo export $theenv >> $ENV_LOG
+   export $theenv
+}
+
+echo ">>> Installing MariaDB"
+
+[[ -z $1 ]] && { echo "!!! MariaDB root password not set. Check the Vagrant file."; exit 1; }
+
+# default version
+MARIADB_VERSION='10.0'
+
+# Import repo key
+sudo apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xcbcb082a1bb943db
+
+# Add repo for MariaDB
+sudo add-apt-repository -y "deb http://mirrors.syringanetworks.net/mariadb/repo/10.0/ubuntu trusty main"
+
+# Update
+sudo apt-get update
+
+# Install MariaDB without password prompt
+# Set username to 'root' and password to 'mariadb_root_password' (see Vagrantfile)
+sudo debconf-set-selections <<< "maria-db-$MARIADB_VERSION mysql-server/root_password password $1"
+sudo debconf-set-selections <<< "maria-db-$MARIADB_VERSION mysql-server/root_password_again password $1"
+
+# Install MariaDB
+# -qq implies -y --force-yes
+sudo apt-get install -qq mariadb-server
+
+# Make Maria connectable from outside world without SSH tunnel
+if [ $2 == "true" ]; then
+    # enable remote access
+    # setting the mysql bind-address to allow connections from everywhere
+    sed -i "s/bind-address.*/bind-address = 0.0.0.0/" /etc/mysql/my.cnf
+
+    # adding grant privileges to mysql root user from everywhere
+    # thx to http://stackoverflow.com/questions/7528967/how-to-grant-mysql-privileges-in-a-bash-script for this
+    MYSQL=`which mysql`
+
+    Q1="GRANT ALL ON *.* TO 'root'@'%' IDENTIFIED BY '$1' WITH GRANT OPTION;"
+    Q2="FLUSH PRIVILEGES;"
+    SQL="${Q1}${Q2}"
+
+    $MYSQL -uroot -p$1 -e "$SQL"
+
+    service mysql restart
+fi
