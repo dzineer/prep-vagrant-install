@@ -3,7 +3,7 @@
 
 # Config Github Settings
 github_username = "dzineer"
-github_repo     = "Vaprobash-php7.3"
+github_repo     = "prep-vagrant-install"
 github_branch   = "master"
 github_url      = "https://raw.githubusercontent.com/#{github_username}/#{github_repo}/#{github_branch}"
 
